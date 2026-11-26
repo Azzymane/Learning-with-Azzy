@@ -57,13 +57,17 @@ This project already contains instructions telling Copilot the rules (plain HTML
 
 ### Good first prompts
 
-Copy one, fill in the blanks, and send it:
+The website already has a working Desk + Luvs You study-desk prototype. Try a
+small change and check it in the preview:
 
-> Our startup idea is: **[one sentence]**. Our customers are **[who]**, and the problem we solve is **[problem]**. Update `data.js` and the text in `index.html` so the site describes our startup. Don't change the layout yet.
+> Make the study desk feel more like **[describe your idea]**. Keep the notes,
+> study cards, and calendar working, and don't add libraries or a real AI API.
 
-> Replace the sample listings in `data.js` with 8 realistic but fake examples that fit our startup.
+> Add **[a feature]** to the study-card screen. Keep it keyboard accessible and
+> make it clear that this is a local demo, not a real AI service.
 
-> Add a page that shows how our product gets more valuable as more people use it. Use fake numbers so we can compare 10 users with 10,000 users.
+> Adjust the colors and spacing for **[your preference]** without changing how
+> notes, focus time, or assignment reminders work.
 
 ### How to talk to Copilot
 
@@ -135,8 +139,8 @@ That link is your live site. Every commit updates it automatically within a few 
 |---|---|
 | `index.html` | The structure and text of your site |
 | `styles.css` | How it looks: colours, fonts, spacing |
-| `data.js` | All your fake data (listings, prices, users…) |
-| `app.js` | What the site *does* when people click things |
+| `data.js` | App settings and starter checklist items |
+| `app.js` | Local demo behavior for notes, study cards, focus time, and calendar |
 | `project-notes/PROJECT_LOG.md` | Your team's record of prompts, problems and decisions |
 | `project-notes/BUSINESS_CASE.md` | The business reasoning behind your prototype |
 | `.github/copilot-instructions.md` | The rules Copilot follows in this project — don't delete it |
