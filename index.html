@@ -3,185 +3,167 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fff9fc">
-  <meta name="description" content="A gentle study space for notes, practice cards, and assignment reminders.">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="A personal whiteboard and gentle study space for students.">
   <title>Desk + Luvs You ♡</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" aria-label="App sidebar">
-      <a class="brand" href="#desk" aria-label="Desk plus Luvs You home">
-        <span class="brand-mark" aria-hidden="true">d<span>♡</span></span>
-        <span>desk <b>+</b> luvs you <span class="brand-heart">♡</span></span>
-      </a>
-
-      <p class="side-label">YOUR SPACE</p>
-      <nav class="side-nav" aria-label="Main navigation">
-        <button class="nav-item active" type="button" data-screen-link="desk" aria-current="page">
-          <span class="nav-icon" aria-hidden="true">⌂</span><span>My desk</span>
-        </button>
-        <button class="nav-item" type="button" data-screen-link="cards">
-          <span class="nav-icon" aria-hidden="true">▤</span><span>Study cards</span>
-          <span class="nav-count" id="card-count">0</span>
-        </button>
-        <button class="nav-item" type="button" data-screen-link="calendar">
-          <span class="nav-icon" aria-hidden="true">▦</span><span>Calendar</span>
-        </button>
+  <header class="topbar">
+    <div class="topbar-start">
+      <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="main-menu">
+        <span></span><span></span><span></span>
+      </button>
+      <a class="brand" href="#" data-home-link>Desk + Luvs You <span aria-hidden="true">♡</span></a>
+      <nav class="menu-panel" id="main-menu" aria-label="Main menu" hidden>
+        <button type="button" data-screen-link="home">Whiteboard</button>
+        <button type="button" data-screen-link="calendar">Calendar</button>
+        <button type="button" data-screen-link="checklist">Checklist</button>
+        <button type="button" data-scroll-to="study-time">Study time</button>
+        <button type="button" data-screen-link="practice">Cards &amp; quiz</button>
       </nav>
+    </div>
+    <div class="topbar-end">
+      <span class="saved-label"><span aria-hidden="true">●</span> Saved on this device</span>
+      <span class="today-label" id="today-label"></span>
+    </div>
+  </header>
 
-      <div class="sidebar-bottom">
-        <div class="study-summary">
-          <span class="summary-icon" aria-hidden="true">◷</span>
-          <span><span class="summary-label">STUDY TIME</span><strong id="sidebar-study-time">0 min</strong></span>
-        </div>
-        <p class="sidebar-foot">A little progress is still progress. <span aria-hidden="true">♡</span></p>
-      </div>
-    </aside>
+  <div class="status-message" id="status-message" role="status" aria-live="polite"></div>
 
-    <main class="main-area">
-      <header class="topbar">
+  <main>
+    <section class="screen home-screen" data-screen="home">
+      <div class="page-intro">
         <div>
-          <p class="eyebrow">YOUR CALM CORNER</p>
-          <p class="top-date" id="today-label"></p>
+          <p class="eyebrow">YOUR SPACE TO THINK</p>
+          <h1>A little room for <span>your ideas.</span></h1>
+          <p class="intro-copy">Type or draw right on your whiteboard. Your work stays in this browser.</p>
         </div>
-        <div class="top-actions">
-          <span class="local-badge"><span aria-hidden="true">●</span> Saved on this device</span>
-          <button class="timer-button" type="button" id="timer-toggle">
-            <span aria-hidden="true">▷</span><span id="timer-label">Start focus</span>
-            <span class="timer-clock" id="timer-display">00:00</span>
-          </button>
+        <div class="board-tools" role="group" aria-label="Whiteboard tools">
+          <button class="tool-button selected" type="button" id="type-tool" aria-pressed="true">Type</button>
+          <button class="tool-button" type="button" id="draw-tool" aria-pressed="false">Draw</button>
+          <button class="tool-button" type="button" id="erase-tool" aria-pressed="false">Eraser</button>
+          <button class="tool-button clear-button" type="button" id="clear-board">Clear board</button>
         </div>
-      </header>
+      </div>
 
-      <div class="status-message" id="status-message" role="status" aria-live="polite"></div>
+      <div class="whiteboard" id="whiteboard">
+        <div class="board-text" id="board-text" contenteditable="true" role="textbox" aria-label="Type on your whiteboard" aria-multiline="true" data-placeholder="Click here and start typing..."></div>
+        <canvas class="drawing-layer" id="drawing-layer" aria-label="Draw on your whiteboard"></canvas>
+      </div>
 
-      <section class="screen" id="screen-desk" data-screen="desk">
-        <div class="welcome-row">
-          <div>
-            <p class="eyebrow pink">A SPACE TO THINK, NOT TO RUSH</p>
-            <h1>Make room for <span>your ideas.</span></h1>
-            <p class="welcome-copy">Brain-dump, add a study note, or turn class definitions into practice cards.</p>
+      <div class="home-bottom">
+        <section class="panel notes-panel" aria-labelledby="notes-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">NOTES TO PRACTICE</p>
+              <h2 id="notes-heading">Make cards &amp; a quick quiz</h2>
+            </div>
+            <span class="heading-heart" aria-hidden="true">♡</span>
           </div>
-          <div class="date-pill"><span aria-hidden="true">✿</span><span id="date-stamp"></span></div>
-        </div>
-
-        <div class="desk-grid">
-          <section class="board-panel panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">THE WHITEBOARD</p>
-                <h2>Your thought space</h2>
-              </div>
-              <span class="tiny-badge">just for you ♡</span>
+          <p class="panel-copy">Paste notes or choose a text file. Definition sentences are turned into flashcards and fill-in-the-blank questions right here in your browser.</p>
+          <label class="sr-only" for="study-source">Paste class notes</label>
+          <textarea class="source-input" id="study-source" rows="4" placeholder="For example: Photosynthesis is the process of turning light into energy."></textarea>
+          <div class="notes-actions">
+            <div class="file-actions">
+              <label class="button button-light" for="study-file">Choose a notes file</label>
+              <input class="sr-only" id="study-file" type="file" accept=".txt,.md,.csv,text/plain,text/markdown,text/csv">
+              <span class="file-label" id="study-file-label">TXT, MD, or CSV</span>
             </div>
-            <form class="note-form" id="note-form">
-              <label class="sr-only" for="note-input">Write a thought or reminder for your board</label>
-              <textarea id="note-input" rows="3" maxlength="500" placeholder="What's on your mind? Drop an idea, a question, or a tiny next step..."></textarea>
-              <div class="form-footer">
-                <span class="muted-small">No perfect words needed.</span>
-                <button class="button button-pink" type="submit"><span aria-hidden="true">＋</span> Pin to board</button>
-              </div>
-            </form>
-            <div class="board-divider"><span>YOUR NOTES</span><span class="board-dots" aria-hidden="true">•••</span></div>
-            <div class="notes-grid" id="notes-grid"></div>
-            <p class="empty-note" id="notes-empty">Your board is waiting for its first little idea.</p>
-          </section>
+            <button class="button button-pink" type="button" id="make-cards">Create cards &amp; quiz</button>
+          </div>
+          <p class="fine-print">Files are read on this device only. No account, upload service, or outside AI is used.</p>
+        </section>
 
-          <aside class="right-rail">
-            <section class="upload-panel panel">
-              <div class="panel-heading compact">
-                <div>
-                  <p class="eyebrow">STUDY TOOLS</p>
-                  <h2>Make a card set</h2>
-                </div>
-                <span class="sparkle" aria-hidden="true">✳</span>
-              </div>
-              <p class="panel-copy">Add class notes, then make quick questions from definitions in your own words.</p>
-              <label class="text-source-label" for="study-source">Paste notes or a definition</label>
-              <textarea class="source-input" id="study-source" rows="5" placeholder="Example: Photosynthesis is the process of turning light into energy."></textarea>
-              <div class="upload-actions">
-                <label class="button button-light upload-button" for="study-file"><span aria-hidden="true">↑</span> Choose a notes file</label>
-                <input class="sr-only" id="study-file" type="file" accept=".txt,.md,.csv,text/plain,text/markdown,text/csv">
-                <span class="file-label" id="study-file-label">TXT, MD, or CSV</span>
-              </div>
-              <button class="button button-dark full-button" type="button" id="make-cards">Create study cards <span aria-hidden="true">→</span></button>
-              <p class="tool-note">Preview only: this uses a simple rule in your browser, not an AI service. No charge.</p>
-            </section>
+        <section class="panel study-panel" id="study-time" aria-labelledby="study-heading">
+          <p class="eyebrow">YOUR GENTLE STREAK</p>
+          <div class="rank-line">
+            <span class="rank-heart" id="rank-heart" aria-label="Empty heart rank">♡</span>
+            <span class="rank-copy">
+              <strong id="rank-name">Empty heart</strong>
+              <span id="next-heart">24 hours to your next heart</span>
+            </span>
+          </div>
+          <p class="reset-copy"><span id="reset-countdown">Resets in 0 days</span> <button class="text-button" type="button" id="demo-reset">Demo reset</button></p>
+          <div class="study-total">
+            <div><p class="eyebrow">TOTAL STUDY TIME</p><h2 id="study-heading"><span id="study-total">0 minutes</span></h2></div>
+            <span class="cycle-total" id="cycle-total">0 hours this cycle</span>
+          </div>
+          <div class="timer-row">
+            <span class="timer-clock" id="timer-display" aria-live="off">00:00</span>
+            <span class="timer-caption">this session</span>
+            <button class="button button-pink timer-button" type="button" id="timer-toggle">Start studying</button>
+          </div>
+          <p class="fine-print">Your total is cumulative. Heart rank starts fresh every six months.</p>
+        </section>
+      </div>
+    </section>
 
-            <section class="next-up-panel">
-              <div class="next-up-heading">
-                <div><p class="eyebrow">COMING UP</p><h2>On your list</h2></div>
-                <button class="text-button" type="button" data-open-screen="calendar">See all <span aria-hidden="true">→</span></button>
-              </div>
-              <div class="mini-task-list" id="mini-task-list"></div>
-              <p class="empty-mini" id="mini-task-empty">Nothing due soon. Enjoy the breathing room.</p>
-            </section>
-          </aside>
+    <section class="screen secondary-screen" data-screen="calendar" hidden>
+      <div class="page-intro">
+        <div><p class="eyebrow">SCHOOL YEAR 2026–27</p><h1>Your <span>calendar.</span></h1><p class="intro-copy">A sample school-year schedule you can change with your own deadlines.</p></div>
+      </div>
+      <div class="calendar-layout">
+        <section class="panel calendar-panel">
+          <div class="panel-heading"><div><p class="eyebrow">UPCOMING DATES</p><h2>Assignment calendar</h2></div><span class="tiny-badge" id="calendar-count"></span></div>
+          <div class="calendar-list" id="calendar-list"></div>
+          <p class="empty-state" id="calendar-empty" hidden>No assignments yet. Add one from your checklist.</p>
+        </section>
+        <aside class="panel calendar-note">
+          <span class="calendar-icon" aria-hidden="true">♡</span>
+          <h2>One step at a time</h2>
+          <p>Tick things off in your checklist. Your dates and progress are saved on this device.</p>
+          <button class="button button-light" type="button" data-screen-link="checklist">Open checklist</button>
+        </aside>
+      </div>
+    </section>
+
+    <section class="screen secondary-screen" data-screen="checklist" hidden>
+      <div class="page-intro">
+        <div><p class="eyebrow">TINY STEPS ADD UP</p><h1>Your <span>checklist.</span></h1><p class="intro-copy">Add assignments and tick them off whenever you finish.</p></div>
+      </div>
+      <div class="checklist-layout">
+        <section class="panel checklist-panel">
+          <div class="panel-heading"><div><p class="eyebrow">YOUR TASKS</p><h2>Assignments &amp; reminders</h2></div><span class="tiny-badge" id="task-count">0 items</span></div>
+          <div class="task-list" id="task-list"></div>
+          <p class="empty-state" id="tasks-empty" hidden>Your list is clear. Add an assignment to get started.</p>
+        </section>
+        <section class="panel add-task-panel">
+          <p class="eyebrow">PLAN AHEAD</p><h2>Add to your list</h2>
+          <form id="task-form" class="task-form">
+            <label for="task-title">Assignment or reminder</label>
+            <input id="task-title" name="title" maxlength="100" placeholder="e.g. Biology chapter review" required>
+            <label for="task-date">Due date</label>
+            <input id="task-date" name="date" type="date" min="2026-07-01" max="2027-08-31" required>
+            <button class="button button-pink full-button" type="submit">Add to my list</button>
+          </form>
+          <p class="fine-print">Choose any date from July 2026 through August 2027.</p>
+        </section>
+      </div>
+    </section>
+
+    <section class="screen secondary-screen" data-screen="practice" hidden>
+      <div class="page-intro">
+        <div><p class="eyebrow">SMALL PRACTICE, STRONGER MEMORY</p><h1>Your <span>study cards.</span></h1><p class="intro-copy">Review a card, then try a short fill-in-the-blank quiz.</p></div>
+        <button class="button button-light" type="button" data-screen-link="home">Add notes</button>
+      </div>
+      <section class="panel quiz-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">QUICK QUIZ</p><h2>Fill in the missing term</h2></div>
+          <button class="button button-pink" type="button" id="start-quiz">Start a short quiz</button>
         </div>
-
-        <p class="privacy-note"><span aria-hidden="true">♡</span> Prototype privacy: notes and study items stay in this browser. Uploaded files are read locally and are not sent to an AI service.</p>
+        <p class="panel-copy" id="quiz-intro">Create cards from definition sentences to begin a quiz of up to five questions.</p>
+        <form id="quiz-form" hidden></form>
+        <p class="quiz-result" id="quiz-result" aria-live="polite"></p>
+        <p class="last-score" id="last-score"></p>
       </section>
+      <div class="cards-heading"><p class="eyebrow">YOUR FLASHCARDS</p><span class="tiny-badge" id="card-count">0 cards</span></div>
+      <div class="cards-grid" id="cards-grid"></div>
+      <div class="panel empty-state" id="cards-empty"><h2>Your first cards start with your notes.</h2><p>Try a sentence like “Photosynthesis is the process of turning light into energy.”</p><button class="button button-light" type="button" data-screen-link="home">Go to whiteboard</button></div>
+    </section>
+  </main>
 
-      <section class="screen" id="screen-cards" data-screen="cards" hidden>
-        <div class="page-heading">
-          <div><p class="eyebrow pink">SMALL STEPS, STRONGER MEMORY</p><h1>Your <span>study cards.</span></h1>
-            <p class="welcome-copy">Tap a card when you're ready to check the definition.</p></div>
-          <button class="button button-light" type="button" data-open-screen="desk">＋ Add notes</button>
-        </div>
-        <div class="cards-grid" id="cards-grid"></div>
-        <div class="empty-state panel" id="cards-empty">
-          <span class="empty-illustration" aria-hidden="true">♡</span>
-          <h2>Your first card set starts with your notes.</h2>
-          <p>Add class notes on your desk. The demo recognizes lines like “X is...” and “X refers to...” to make a question.</p>
-          <button class="button button-pink" type="button" data-open-screen="desk">Go to my desk</button>
-        </div>
-      </section>
-
-      <section class="screen" id="screen-calendar" data-screen="calendar" hidden>
-        <div class="page-heading calendar-heading">
-          <div><p class="eyebrow pink">ONE THING AT A TIME</p><h1>Your <span>calendar.</span></h1>
-            <p class="welcome-copy">Keep assignment dates together and give future-you a gentle nudge.</p></div>
-          <span class="school-year">SCHOOL YEAR <b>2026–27</b></span>
-        </div>
-        <div class="calendar-layout">
-          <section class="panel agenda-panel">
-            <div class="panel-heading">
-              <div><p class="eyebrow">YOUR CHECKLIST</p><h2>Upcoming assignments</h2></div>
-              <span class="tiny-badge" id="task-count">0 items</span>
-            </div>
-            <div class="task-list" id="task-list"></div>
-            <p class="empty-note" id="tasks-empty">Your list is clear. Add an assignment to get started.</p>
-          </section>
-          <aside class="calendar-side">
-            <section class="panel add-task-panel">
-              <p class="eyebrow">PLAN AHEAD</p><h2>Add a deadline</h2>
-              <form id="task-form" class="task-form">
-                <label for="task-title">Assignment or event</label>
-                <input id="task-title" name="title" maxlength="100" placeholder="e.g. Biology chapter review" required>
-                <label for="task-date">Due date</label>
-                <input id="task-date" name="date" type="date" min="2026-07-01" max="2027-08-31" required>
-                <button class="button button-pink full-button" type="submit">Add to my list <span aria-hidden="true">＋</span></button>
-              </form>
-              <p class="tool-note">Dates are saved in this browser. Set a date from July 2026 through August 2027.</p>
-            </section>
-            <section class="panel import-panel">
-              <div class="import-icon" aria-hidden="true">▦</div>
-              <h2>Have a calendar file?</h2>
-              <p>Import an <strong>.ics</strong> calendar or plain-text syllabus. Review each date before adding it.</p>
-              <label class="button button-light upload-button" for="calendar-file">Choose a file</label>
-              <input class="sr-only" id="calendar-file" type="file" accept=".ics,.txt,.md,.csv,text/calendar,text/plain,text/markdown,text/csv">
-              <p class="file-label" id="calendar-file-label">Nothing selected</p>
-              <div class="import-preview" id="import-preview" hidden></div>
-            </section>
-          </aside>
-        </div>
-        <p class="privacy-note"><span aria-hidden="true">♡</span> This prototype lists due dates but does not send push notifications or sync with an external calendar.</p>
-      </section>
-
-      <footer class="app-footer">A gentle little study corner <span aria-hidden="true">♡</span> &nbsp;·&nbsp; Student prototype, not a real company.</footer>
-    </main>
-  </div>
+  <footer class="app-footer">Student prototype</footer>
 
   <script src="data.js"></script>
   <script src="app.js"></script>

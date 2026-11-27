@@ -21,57 +21,127 @@
       : Date.now().toString(36) + Math.random().toString(36).slice(2);
   }
 
-  function dateOffset(days) {
-    const date = new Date();
-    date.setHours(12, 0, 0, 0);
-    date.setDate(date.getDate() + days);
-    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
-  }
-
   function starterTasks() {
     return STARTER_TASKS.map(function (task) {
       return {
         id: makeId(),
         title: task.title,
-        date: dateOffset(task.dayOffset),
+        date: task.date,
         completed: false,
-        source: "A gentle nudge"
+        source: "Sample assignment"
       };
     });
   }
 
+  function validDate(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parts = value.split("-").map(Number);
+    const date = new Date(parts[0], parts[1] - 1, parts[2], 12);
+    return date.getFullYear() === parts[0] &&
+      date.getMonth() === parts[1] - 1 &&
+      date.getDate() === parts[2];
+  }
+
+  function normalizeCard(card) {
+    if (!card || typeof card.question !== "string" || typeof card.answer !== "string") return null;
+    const term = typeof card.term === "string"
+      ? card.term
+      : card.question.replace(/^What is\s+/i, "").replace(/\?$/, "");
+    const answer = card.answer;
+    const definition = answer.replace(new RegExp("^" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+", "i"), "");
+    return {
+      id: typeof card.id === "string" ? card.id : makeId(),
+      question: card.question,
+      answer: answer,
+      term: term,
+      cloze: typeof card.cloze === "string" ? card.cloze : "_____ is " + definition
+    };
+  }
+
   function loadState() {
+    const now = new Date().toISOString();
     try {
       const saved = localStorage.getItem(DESK_APP.storageKey);
       if (saved === null) {
-        return { notes: [], cards: [], tasks: starterTasks(), studySeconds: 0 };
+        return {
+          boardText: "",
+          strokes: [],
+          cards: [],
+          tasks: starterTasks(),
+          studySeconds: 0,
+          cycleStudySeconds: 0,
+          cycleStart: now,
+          lastQuiz: null
+        };
       }
 
       const parsed = JSON.parse(saved);
-      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.notes) ||
-          !Array.isArray(parsed.cards) || !Array.isArray(parsed.tasks)) {
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.tasks)) {
         throw new Error("Saved data has an unexpected format.");
       }
+      const oldNotes = Array.isArray(parsed.notes)
+        ? parsed.notes.map(function (note) {
+          return note && typeof note.text === "string" ? note.text : "";
+        }).filter(Boolean).join("\n\n")
+        : "";
+      const cards = Array.isArray(parsed.cards)
+        ? parsed.cards.map(normalizeCard).filter(Boolean)
+        : [];
+      const cycleStart = typeof parsed.cycleStart === "string" && Number.isFinite(Date.parse(parsed.cycleStart))
+        ? parsed.cycleStart
+        : now;
+      const lastQuiz = parsed.lastQuiz && Number.isFinite(parsed.lastQuiz.score) &&
+        Number.isFinite(parsed.lastQuiz.total) ? parsed.lastQuiz : null;
 
       return {
-        notes: parsed.notes,
-        cards: parsed.cards,
-        tasks: parsed.tasks,
+        boardText: typeof parsed.boardText === "string" ? parsed.boardText : oldNotes,
+        strokes: Array.isArray(parsed.strokes) ? parsed.strokes.filter(function (stroke) {
+          return stroke && Array.isArray(stroke.points) && stroke.points.length > 0;
+        }) : [],
+        cards: cards,
+        tasks: parsed.tasks.filter(function (task) {
+          return task && typeof task.title === "string" && validDate(task.date);
+        }).map(function (task) {
+          return {
+            id: typeof task.id === "string" ? task.id : makeId(),
+            title: task.title,
+            date: task.date,
+            completed: Boolean(task.completed),
+            source: typeof task.source === "string" ? task.source : ""
+          };
+        }),
         studySeconds: Number.isFinite(parsed.studySeconds) && parsed.studySeconds >= 0
           ? parsed.studySeconds
-          : 0
+          : 0,
+        cycleStudySeconds: Number.isFinite(parsed.cycleStudySeconds) && parsed.cycleStudySeconds >= 0
+          ? parsed.cycleStudySeconds
+          : (Number.isFinite(parsed.studySeconds) && parsed.studySeconds >= 0 ? parsed.studySeconds : 0),
+        cycleStart: cycleStart,
+        lastQuiz: lastQuiz
       };
     } catch (error) {
       showStatus("We couldn't read saved study data. Your new changes will be saved in this browser.");
-      return { notes: [], cards: [], tasks: starterTasks(), studySeconds: 0 };
+      return {
+        boardText: "",
+        strokes: [],
+        cards: [],
+        tasks: starterTasks(),
+        studySeconds: 0,
+        cycleStudySeconds: 0,
+        cycleStart: now,
+        lastQuiz: null
+      };
     }
   }
 
   const state = loadState();
+  let currentScreen = "home";
   let studyFileText = "";
-  let importCandidates = [];
+  let quizCards = [];
   let timerInterval = null;
   let runningSeconds = 0;
+  let lastTick = 0;
+  let saveTextTimeout = null;
 
   function saveState() {
     try {
@@ -89,96 +159,193 @@
     return date.toLocaleDateString(undefined, options || { month: "short", day: "numeric" });
   }
 
-  function isInSchoolYear(dateString) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString) ||
-        dateString < DESK_APP.schoolYearStart ||
-        dateString > DESK_APP.schoolYearEnd) return false;
-    const parts = dateString.split("-").map(Number);
-    const date = new Date(parts[0], parts[1] - 1, parts[2], 12);
-    return date.getFullYear() === parts[0] &&
-      date.getMonth() === parts[1] - 1 &&
-      date.getDate() === parts[2];
-  }
-
   function renderDate() {
-    const now = new Date();
-    $("#today-label").textContent = now.toLocaleDateString(undefined, {
-      weekday: "long", month: "long", day: "numeric", year: "numeric"
-    });
-    $("#date-stamp").textContent = now.toLocaleDateString(undefined, {
+    $("#today-label").textContent = new Date().toLocaleDateString(undefined, {
       weekday: "short", month: "short", day: "numeric"
     });
   }
 
+  const menuToggle = $("#menu-toggle");
+  const menu = $("#main-menu");
+
+  function closeMenu() {
+    menu.hidden = true;
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.setAttribute("aria-label", "Open menu");
+  }
+
   function showScreen(name) {
+    currentScreen = name;
     $$("[data-screen]").forEach(function (screen) {
       screen.hidden = screen.dataset.screen !== name;
     });
     $$("[data-screen-link]").forEach(function (button) {
       const active = button.dataset.screenLink === name;
-      button.classList.toggle("active", active);
-      if (active) {
-        button.setAttribute("aria-current", "page");
-      } else {
-        button.removeAttribute("aria-current");
-      }
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
     });
+    closeMenu();
     window.scrollTo(0, 0);
   }
+
+  menuToggle.addEventListener("click", function () {
+    const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
+    menu.hidden = isOpen;
+    menuToggle.setAttribute("aria-expanded", String(!isOpen));
+    menuToggle.setAttribute("aria-label", isOpen ? "Open menu" : "Close menu");
+  });
 
   $$("[data-screen-link]").forEach(function (button) {
     button.addEventListener("click", function () {
       showScreen(button.dataset.screenLink);
     });
   });
-  $$("[data-open-screen]").forEach(function (button) {
+
+  $$("[data-scroll-to]").forEach(function (button) {
     button.addEventListener("click", function () {
-      showScreen(button.dataset.openScreen);
+      if (currentScreen !== "home") showScreen("home");
+      else closeMenu();
+      window.setTimeout(function () {
+        $("#study-time").scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 0);
     });
   });
 
-  function renderNotes() {
-    const grid = $("#notes-grid");
-    grid.replaceChildren();
-    state.notes.forEach(function (note) {
-      const article = document.createElement("article");
-      article.className = "sticky-note";
-      article.append(document.createTextNode(note.text));
-
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "remove-note";
-      remove.textContent = "×";
-      remove.setAttribute("aria-label", "Remove note");
-      remove.addEventListener("click", function () {
-        state.notes = state.notes.filter(function (item) { return item.id !== note.id; });
-        saveState();
-        renderNotes();
-      });
-
-      const time = document.createElement("span");
-      time.className = "note-time";
-      time.textContent = note.createdAt ? formatDate(note.createdAt.slice(0, 10)) : "A thought for later";
-      article.append(remove, time);
-      grid.append(article);
+  $$("[data-home-link]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      showScreen("home");
     });
-    $("#notes-empty").hidden = state.notes.length > 0;
+  });
+
+  document.addEventListener("click", function (event) {
+    if (!menu.hidden && !menu.contains(event.target) && !menuToggle.contains(event.target)) closeMenu();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !menu.hidden) {
+      closeMenu();
+      menuToggle.focus();
+    }
+  });
+
+  const boardText = $("#board-text");
+  const canvas = $("#drawing-layer");
+  const context = canvas.getContext("2d");
+  let boardMode = "type";
+  let activeStroke = null;
+
+  boardText.textContent = state.boardText;
+
+  function saveBoardText() {
+    state.boardText = boardText.textContent;
+    window.clearTimeout(saveTextTimeout);
+    saveTextTimeout = window.setTimeout(saveState, 250);
   }
 
-  $("#note-form").addEventListener("submit", function (event) {
-    event.preventDefault();
-    const input = $("#note-input");
-    const text = input.value.trim();
-    if (!text) {
-      showStatus("Add a thought before pinning it to your board.");
-      input.focus();
-      return;
+  boardText.addEventListener("input", saveBoardText);
+
+  function setBoardMode(mode) {
+    boardMode = mode;
+    canvas.classList.toggle("drawing-enabled", mode !== "type");
+    boardText.contentEditable = mode === "type" ? "true" : "false";
+    $("#type-tool").classList.toggle("selected", mode === "type");
+    $("#draw-tool").classList.toggle("selected", mode === "draw");
+    $("#erase-tool").classList.toggle("selected", mode === "erase");
+    $("#type-tool").setAttribute("aria-pressed", String(mode === "type"));
+    $("#draw-tool").setAttribute("aria-pressed", String(mode === "draw"));
+    $("#erase-tool").setAttribute("aria-pressed", String(mode === "erase"));
+  }
+
+  $("#type-tool").addEventListener("click", function () { setBoardMode("type"); });
+  $("#draw-tool").addEventListener("click", function () { setBoardMode("draw"); });
+  $("#erase-tool").addEventListener("click", function () { setBoardMode("erase"); });
+
+  function drawStroke(stroke, width, height) {
+    if (!stroke.points.length) return;
+    context.save();
+    context.globalCompositeOperation = stroke.erase ? "destination-out" : "source-over";
+    context.strokeStyle = stroke.erase ? "#000" : stroke.color;
+    context.fillStyle = stroke.erase ? "#000" : stroke.color;
+    context.lineWidth = stroke.width || 3;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    const first = stroke.points[0];
+    context.beginPath();
+    context.moveTo(first.x * width, first.y * height);
+    stroke.points.slice(1).forEach(function (point) {
+      context.lineTo(point.x * width, point.y * height);
+    });
+    if (stroke.points.length === 1) {
+      context.arc(first.x * width, first.y * height, context.lineWidth / 2, 0, Math.PI * 2);
+      context.fill();
+    } else {
+      context.stroke();
     }
-    state.notes.unshift({ id: makeId(), text: text, createdAt: new Date().toISOString() });
+    context.restore();
+  }
+
+  function renderStrokes() {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, rect.width, rect.height);
+    state.strokes.forEach(function (stroke) {
+      drawStroke(stroke, rect.width, rect.height);
+    });
+    if (activeStroke) drawStroke(activeStroke, rect.width, rect.height);
+  }
+
+  const resizeObserver = new ResizeObserver(renderStrokes);
+  resizeObserver.observe($("#whiteboard"));
+  window.addEventListener("resize", renderStrokes);
+
+  function canvasPoint(event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+    };
+  }
+
+  canvas.addEventListener("pointerdown", function (event) {
+    if (boardMode === "type") return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    activeStroke = {
+      color: "#d96f98",
+      erase: boardMode === "erase",
+      width: boardMode === "erase" ? 22 : 3.5,
+      points: [canvasPoint(event)]
+    };
+    renderStrokes();
+  });
+
+  canvas.addEventListener("pointermove", function (event) {
+    if (!activeStroke || !canvas.hasPointerCapture(event.pointerId)) return;
+    activeStroke.points.push(canvasPoint(event));
+    renderStrokes();
+  });
+
+  function finishStroke() {
+    if (!activeStroke) return;
+    state.strokes.push(activeStroke);
+    activeStroke = null;
     saveState();
-    input.value = "";
-    renderNotes();
-    showStatus("Your note is on the board.");
+    renderStrokes();
+  }
+  canvas.addEventListener("pointerup", finishStroke);
+  canvas.addEventListener("pointercancel", finishStroke);
+
+  $("#clear-board").addEventListener("click", function () {
+    boardText.textContent = "";
+    state.boardText = "";
+    state.strokes = [];
+    saveState();
+    renderStrokes();
+    showStatus("Your whiteboard is clear.");
   });
 
   function renderCards() {
@@ -198,7 +365,6 @@
       const hint = document.createElement("span");
       hint.className = "card-flip-hint";
       hint.textContent = "Tap to reveal";
-
       const question = document.createElement("span");
       question.className = "card-question";
       question.textContent = card.question;
@@ -218,31 +384,41 @@
       grid.append(button);
     });
     $("#cards-empty").hidden = state.cards.length > 0;
-    $("#card-count").textContent = String(state.cards.length);
+    $("#card-count").textContent = state.cards.length + (state.cards.length === 1 ? " card" : " cards");
+    $("#start-quiz").disabled = state.cards.length === 0;
+    $("#last-score").textContent = state.lastQuiz
+      ? "Last score: " + state.lastQuiz.score + " / " + state.lastQuiz.total
+      : "";
   }
 
   function extractDefinitions(text) {
     const definitions = [];
     const lines = text.split(/\r?\n/);
-    const definitionPattern = /^(.{2,80}?)\s+(is defined as|refers to|is the process of|is)\s+(.+?)[.!?]?$/i;
+    const definitionPattern = /^(.{1,100}?)\s+(is defined as|refers to|is the process of|is)\s+(.+?)[.!?]*$/i;
 
     lines.forEach(function (line) {
-      const cleaned = line.trim().replace(/^[*•\-]\s*/, "");
-      const match = cleaned.match(definitionPattern);
-      if (!match) return;
+      const sentences = line.match(/[^.!?]+[.!?]?/g) || [];
+      sentences.forEach(function (sentence) {
+        const cleaned = sentence.trim().replace(/^[*•\-]\s*/, "");
+        const match = cleaned.match(definitionPattern);
+        if (!match) return;
 
-      const sourceTerm = match[1].trim();
-      const questionTerm = sourceTerm.replace(/^(?:the|a|an)\s+/i, "");
-      const definition = match[3].trim().replace(/[.!?]+$/, "");
-      if (!questionTerm || !definition) return;
+        const sourceTerm = match[1].trim();
+        const term = sourceTerm.replace(/^(?:the|a|an)\s+/i, "");
+        const definition = match[3].trim().replace(/[.!?]+$/, "");
+        if (!term || !definition) return;
 
-      const question = "What is " + questionTerm + "?";
-      if (definitions.some(function (item) { return item.question === question; })) return;
+        const question = "What is " + term + "?";
+        if (definitions.some(function (item) { return item.question.toLowerCase() === question.toLowerCase(); })) return;
 
-      definitions.push({
-        id: makeId(),
-        question: question,
-        answer: sourceTerm + " " + match[2].toLowerCase() + " " + definition + "."
+        const relation = match[2].toLowerCase();
+        definitions.push({
+          id: makeId(),
+          question: question,
+          answer: sourceTerm + " " + relation + " " + definition + ".",
+          term: term,
+          cloze: "_____ " + relation + " " + definition + "."
+        });
       });
     });
     return definitions;
@@ -252,7 +428,7 @@
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     if (file.size > 1024 * 1024) {
-      showStatus("Choose a text file smaller than 1 MB for this preview.");
+      showStatus("Choose a text file smaller than 1 MB.");
       event.target.value = "";
       return;
     }
@@ -276,39 +452,126 @@
       return;
     }
 
-    const cards = extractDefinitions(text);
-    if (cards.length === 0) {
-      showStatus("No definition pattern found. Try a line like “Photosynthesis is the process of...”");
+    const extracted = extractDefinitions(text);
+    if (extracted.length === 0) {
+      showStatus("No definition found. Try a sentence like “Photosynthesis is the process of...”");
       return;
     }
 
-    const existing = new Set(state.cards.map(function (card) { return card.question; }));
-    const newCards = cards.filter(function (card) { return !existing.has(card.question); });
+    const existing = new Set(state.cards.map(function (card) { return card.question.toLowerCase(); }));
+    const newCards = extracted.filter(function (card) { return !existing.has(card.question.toLowerCase()); });
     if (newCards.length === 0) {
       showStatus("Those study cards are already in your set.");
+      showScreen("practice");
       return;
     }
-    state.cards = newCards.concat(state.cards).slice(0, 60);
+    state.cards = newCards.concat(state.cards).slice(0, 80);
     saveState();
     renderCards();
-    showScreen("cards");
-    showStatus(newCards.length + " study " + (newCards.length === 1 ? "card is" : "cards are") + " ready. Tap one to reveal the answer.");
+    showScreen("practice");
+    showStatus(newCards.length + " " + (newCards.length === 1 ? "card is" : "cards are") + " ready. Start a short quiz when you like.");
   });
 
-  function taskDateLabel(task) {
-    const today = dateOffset(0);
-    const tomorrow = dateOffset(1);
-    if (task.date === today) return "Due today";
-    if (task.date === tomorrow) return "Due tomorrow";
-    return formatDate(task.date, { weekday: "short", month: "short", day: "numeric" });
+  function normalizeAnswer(value) {
+    return value.toLowerCase().trim().replace(/^(?:the|a|an)\s+/i, "").replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ");
   }
+
+  function startQuiz() {
+    if (state.cards.length === 0) return;
+    quizCards = state.cards.slice(0, 5);
+    const form = $("#quiz-form");
+    form.replaceChildren();
+    quizCards.forEach(function (card, index) {
+      const question = document.createElement("label");
+      question.className = "quiz-question";
+      const prompt = document.createElement("span");
+      prompt.textContent = (index + 1) + ". " + card.cloze;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.name = "answer-" + index;
+      input.autocomplete = "off";
+      input.setAttribute("aria-label", "Answer for question " + (index + 1));
+      question.append(prompt, input);
+      form.append(question);
+    });
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className = "button button-pink";
+    submit.textContent = "Check my answers";
+    form.append(submit);
+    form.hidden = false;
+    $("#quiz-result").textContent = "";
+    $("#quiz-intro").textContent = "Answer each blank with the missing term.";
+    form.querySelector("input").focus();
+  }
+
+  $("#start-quiz").addEventListener("click", startQuiz);
+  $("#quiz-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (quizCards.length === 0) return;
+    let score = 0;
+    quizCards.forEach(function (card, index) {
+      const input = $("#quiz-form").elements.namedItem("answer-" + index);
+      const correct = normalizeAnswer(input.value) === normalizeAnswer(card.term);
+      if (correct) score += 1;
+      input.classList.toggle("answer-correct", correct);
+      input.classList.toggle("answer-incorrect", !correct);
+      input.disabled = true;
+      const feedback = document.createElement("span");
+      feedback.className = "answer-feedback";
+      feedback.textContent = correct ? "Correct!" : "Answer: " + card.term;
+      input.after(feedback);
+    });
+    $("#quiz-result").textContent = "Your score: " + score + " / " + quizCards.length;
+    state.lastQuiz = { score: score, total: quizCards.length, completedAt: new Date().toISOString() };
+    saveState();
+    renderCards();
+  });
 
   function sortedTasks(includeCompleted) {
     return state.tasks.filter(function (task) {
       return includeCompleted || !task.completed;
     }).sort(function (first, second) {
-      return first.date.localeCompare(second.date);
+      return first.date.localeCompare(second.date) || first.title.localeCompare(second.title);
     });
+  }
+
+  function renderCalendar() {
+    const list = $("#calendar-list");
+    list.replaceChildren();
+    const tasks = sortedTasks(true);
+    const months = new Map();
+    tasks.forEach(function (task) {
+      const monthKey = task.date.slice(0, 7);
+      if (!months.has(monthKey)) months.set(monthKey, []);
+      months.get(monthKey).push(task);
+    });
+
+    months.forEach(function (items, monthKey) {
+      const group = document.createElement("section");
+      group.className = "month-group";
+      const heading = document.createElement("h3");
+      heading.textContent = formatDate(monthKey + "-01", { month: "long", year: "numeric" });
+      group.append(heading);
+      items.forEach(function (task) {
+        const row = document.createElement("div");
+        row.className = "calendar-item" + (task.completed ? " completed" : "");
+        const date = document.createElement("span");
+        date.className = "calendar-date";
+        date.textContent = formatDate(task.date, { weekday: "short", month: "short", day: "numeric" });
+        const title = document.createElement("span");
+        title.className = "calendar-task";
+        title.textContent = task.title;
+        const status = document.createElement("span");
+        status.className = "calendar-status";
+        status.textContent = task.completed ? "Done" : "To do";
+        row.append(date, title, status);
+        group.append(row);
+      });
+      list.append(group);
+    });
+    $("#calendar-empty").hidden = tasks.length > 0;
+    $("#calendar-count").textContent = tasks.length + (tasks.length === 1 ? " date" : " dates");
   }
 
   function renderTasks() {
@@ -317,16 +580,16 @@
     sortedTasks(true).forEach(function (task) {
       const row = document.createElement("div");
       row.className = "task-item" + (task.completed ? " completed" : "");
-
       const check = document.createElement("input");
       check.type = "checkbox";
       check.className = "task-check";
-      check.checked = Boolean(task.completed);
+      check.checked = task.completed;
       check.setAttribute("aria-label", "Mark " + task.title + " complete");
       check.addEventListener("change", function () {
         task.completed = check.checked;
         saveState();
         renderTasks();
+        renderCalendar();
       });
 
       const details = document.createElement("span");
@@ -336,8 +599,8 @@
       title.textContent = task.title;
       const meta = document.createElement("span");
       meta.className = "task-meta";
-      meta.textContent = formatDate(task.date, { weekday: "long", month: "long", day: "numeric" }) +
-        (task.source ? "  ·  " + task.source : "");
+      meta.textContent = formatDate(task.date, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) +
+        (task.source ? " · " + task.source : "");
       details.append(title, meta);
 
       const remove = document.createElement("button");
@@ -349,37 +612,14 @@
         state.tasks = state.tasks.filter(function (item) { return item.id !== task.id; });
         saveState();
         renderTasks();
+        renderCalendar();
       });
       row.append(check, details, remove);
       taskList.append(row);
     });
-
-    const upcoming = sortedTasks(false).slice(0, 3);
-    const miniList = $("#mini-task-list");
-    miniList.replaceChildren();
-    upcoming.forEach(function (task) {
-      const item = document.createElement("div");
-      item.className = "mini-task";
-      const dot = document.createElement("span");
-      dot.className = "task-dot";
-      dot.setAttribute("aria-hidden", "true");
-      const copy = document.createElement("span");
-      copy.className = "mini-task-copy";
-      const title = document.createElement("span");
-      title.className = "mini-task-title";
-      title.textContent = task.title;
-      const date = document.createElement("span");
-      date.className = "mini-task-date";
-      date.textContent = taskDateLabel(task);
-      copy.append(title, date);
-      item.append(dot, copy);
-      miniList.append(item);
-    });
-
-    $("#tasks-empty").hidden = state.tasks.length > 0;
-    $("#mini-task-empty").hidden = upcoming.length > 0;
     const activeCount = sortedTasks(false).length;
-    $("#task-count").textContent = activeCount + (activeCount === 1 ? " item" : " items");
+    $("#tasks-empty").hidden = state.tasks.length > 0;
+    $("#task-count").textContent = activeCount + (activeCount === 1 ? " item left" : " items left");
   }
 
   $("#task-date").min = DESK_APP.schoolYearStart;
@@ -388,7 +628,7 @@
     event.preventDefault();
     const title = $("#task-title").value.trim();
     const date = $("#task-date").value;
-    if (!title || !isInSchoolYear(date)) {
+    if (!title || !validDate(date) || date < DESK_APP.schoolYearStart || date > DESK_APP.schoolYearEnd) {
       showStatus("Add a title and choose a date in the 2026–27 school year.");
       return;
     }
@@ -396,160 +636,129 @@
     saveState();
     event.target.reset();
     renderTasks();
+    renderCalendar();
     showStatus("Added to your checklist.");
   });
 
-  function unfoldCalendar(text) {
-    return text.replace(/\r\n/g, "\n").replace(/\n[ \t]/g, "");
+  function addMonthsClamped(date, count) {
+    const targetMonth = date.getMonth() + count;
+    const target = new Date(date.getFullYear(), targetMonth, 1, date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    target.setDate(Math.min(date.getDate(), lastDay));
+    return target;
   }
 
-  function unescapeCalendarText(text) {
-    return text.replace(/\\n/gi, " ").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
-  }
-
-  function readCalendarEvents(text) {
-    const candidates = [];
-    if (!/BEGIN:VCALENDAR/i.test(text)) {
-      text.split(/\r?\n/).forEach(function (line) {
-        const cleaned = line.trim();
-        const match = cleaned.match(/^(.{2,100}?)\s*(?:[:,\u2013\u2014-]\s*)?(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})\s*[.:]?\s*$/);
-        if (!match) return;
-
-        let date = match[2];
-        if (date.indexOf("/") !== -1) {
-          const parts = date.split("/");
-          date = parts[2] + "-" + parts[0].padStart(2, "0") + "-" + parts[1].padStart(2, "0");
-        }
-        const title = match[1].replace(/[\s,:;\u2013\u2014-]+$/, "").trim();
-        if (title && isInSchoolYear(date)) {
-          candidates.push({
-            id: makeId(),
-            title: title,
-            date: date,
-            completed: false,
-            source: "Syllabus import"
-          });
-        }
-      });
-      return candidates;
+  function currentCycle(now) {
+    let start = new Date(state.cycleStart);
+    if (!Number.isFinite(start.getTime())) start = now;
+    let changed = false;
+    let next = addMonthsClamped(start, 6);
+    while (next <= now) {
+      start = next;
+      state.cycleStudySeconds = 0;
+      next = addMonthsClamped(start, 6);
+      changed = true;
     }
-
-    let current = null;
-    unfoldCalendar(text).split("\n").forEach(function (line) {
-      if (line === "BEGIN:VEVENT") {
-        current = {};
-      } else if (line === "END:VEVENT" && current) {
-        if (current.title && current.date && isInSchoolYear(current.date)) {
-          candidates.push({
-            id: makeId(),
-            title: current.title,
-            date: current.date,
-            completed: false,
-            source: "Calendar import"
-          });
-        }
-        current = null;
-      } else if (current) {
-        const summary = line.match(/^SUMMARY(?:;[^:]*)?:(.*)$/i);
-        const start = line.match(/^DTSTART(?:;[^:]*)?:(\d{4})(\d{2})(\d{2})/i);
-        if (summary) current.title = unescapeCalendarText(summary[1]).trim();
-        if (start) current.date = start[1] + "-" + start[2] + "-" + start[3];
-      }
-    });
-    return candidates;
+    if (changed || state.cycleStart !== start.toISOString()) {
+      state.cycleStart = start.toISOString();
+      if (changed) saveState();
+    }
+    return { start: start, next: next };
   }
 
-  function renderImportPreview() {
-    const preview = $("#import-preview");
-    preview.replaceChildren();
-    preview.hidden = importCandidates.length === 0;
-    if (importCandidates.length === 0) return;
-
-    const heading = document.createElement("p");
-    heading.textContent = "Review these dates before adding:";
-    preview.append(heading);
-    importCandidates.forEach(function (candidate) {
-      const row = document.createElement("div");
-      row.className = "import-candidate";
-      const detail = document.createElement("span");
-      detail.textContent = candidate.title + " · " + formatDate(candidate.date, { month: "short", day: "numeric", year: "numeric" });
-      const add = document.createElement("button");
-      add.type = "button";
-      add.textContent = "Add to checklist";
-      add.addEventListener("click", function () {
-        state.tasks.push(candidate);
-        importCandidates = importCandidates.filter(function (item) { return item.id !== candidate.id; });
-        saveState();
-        renderTasks();
-        renderImportPreview();
-        showStatus("Calendar date added to your checklist.");
-      });
-      row.append(detail, add);
-      preview.append(row);
-    });
+  function formatDuration(seconds) {
+    const totalMinutes = Math.floor(seconds / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return totalMinutes + (totalMinutes === 1 ? " minute" : " minutes");
+    return hours + " hr " + minutes + " min";
   }
 
-  $("#calendar-file").addEventListener("change", async function (event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) {
-      showStatus("Choose a calendar file smaller than 1 MB for this preview.");
-      event.target.value = "";
-      return;
+  function formatClock(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainder = seconds % 60;
+    if (hours > 0) {
+      return String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(remainder).padStart(2, "0");
     }
-    $("#calendar-file-label").textContent = file.name;
-    try {
-      const candidates = readCalendarEvents(await file.text());
-      const existing = new Set(state.tasks.map(function (task) {
-        return task.title.toLowerCase() + "|" + task.date;
-      }));
-      importCandidates = candidates.filter(function (candidate) {
-        return !existing.has(candidate.title.toLowerCase() + "|" + candidate.date);
-      });
-      renderImportPreview();
-      if (importCandidates.length === 0) {
-        showStatus("No new 2026–27 dates found. Use an .ics export or lines like “Essay due: 2026-12-10”.");
-      } else {
-        showStatus(importCandidates.length + " calendar " + (importCandidates.length === 1 ? "date is" : "dates are") + " ready for review.");
-      }
-    } catch (error) {
-      $("#calendar-file-label").textContent = "Could not read that file";
-      showStatus("This calendar file couldn't be read. Please choose a valid .ics export.");
-    }
-  });
+    return String(minutes).padStart(2, "0") + ":" + String(remainder).padStart(2, "0");
+  }
 
-  function renderTimer() {
-    const minutes = Math.floor(runningSeconds / 60);
-    const seconds = runningSeconds % 60;
-    $("#timer-display").textContent = String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
-    $("#sidebar-study-time").textContent = Math.floor(state.studySeconds / 60) + " min";
+  function renderStudyTime() {
+    const now = new Date();
+    const cycle = currentCycle(now);
+    const hours = state.cycleStudySeconds / 3600;
+    let rank;
+    if (hours >= 100) rank = { name: "Pink heart", symbol: "♥", className: "heart-pink", next: null };
+    else if (hours >= 72) rank = { name: "Red heart", symbol: "♥", className: "heart-red", next: 100 };
+    else if (hours >= 40) rank = { name: "Purple heart", symbol: "♥", className: "heart-purple", next: 72 };
+    else if (hours >= 24) rank = { name: "White heart", symbol: "♥", className: "heart-white", next: 40 };
+    else rank = { name: "Empty heart", symbol: "♡", className: "heart-empty", next: 24 };
+
+    const heart = $("#rank-heart");
+    heart.textContent = rank.symbol;
+    heart.className = "rank-heart " + rank.className;
+    heart.setAttribute("aria-label", rank.name);
+    $("#rank-name").textContent = rank.name;
+    $("#next-heart").textContent = rank.next === null
+      ? "You've reached the highest heart rank!"
+      : Math.ceil((rank.next * 3600 - state.cycleStudySeconds) / 3600) + " hours to your next heart";
+    $("#study-total").textContent = formatDuration(state.studySeconds);
+    $("#cycle-total").textContent = (hours % 1 === 0 ? hours.toFixed(0) : hours.toFixed(1)) + (hours === 1 ? " hour this cycle" : " hours this cycle");
+    $("#reset-countdown").textContent = "Resets in " + Math.max(0, Math.ceil((cycle.next.getTime() - now.getTime()) / 86400000)) + " days";
+    $("#timer-display").textContent = formatClock(runningSeconds);
+    $("#timer-toggle").textContent = timerInterval === null ? "Start studying" : "Pause timer";
+  }
+
+  function tickTimer() {
+    if (timerInterval === null) return;
+    const now = Date.now();
+    const elapsed = Math.floor((now - lastTick) / 1000);
+    if (elapsed < 1) return;
+    lastTick += elapsed * 1000;
+    runningSeconds += elapsed;
+    currentCycle(new Date(now));
+    state.cycleStudySeconds += elapsed;
+    state.studySeconds += elapsed;
+    renderStudyTime();
+    if (state.studySeconds % 10 < elapsed) saveState();
   }
 
   $("#timer-toggle").addEventListener("click", function () {
     if (timerInterval !== null) {
+      tickTimer();
       window.clearInterval(timerInterval);
       timerInterval = null;
-      $("#timer-label").textContent = "Resume focus";
       saveState();
-      return;
+    } else {
+      lastTick = Date.now();
+      timerInterval = window.setInterval(tickTimer, 1000);
     }
-
-    $("#timer-label").textContent = "Pause session";
-    timerInterval = window.setInterval(function () {
-      runningSeconds += 1;
-      state.studySeconds += 1;
-      renderTimer();
-      if (state.studySeconds % 15 === 0) saveState();
-    }, 1000);
+    renderStudyTime();
   });
 
-  window.addEventListener("beforeunload", saveState);
+  $("#demo-reset").addEventListener("click", function () {
+    state.cycleStudySeconds = 0;
+    state.cycleStart = new Date().toISOString();
+    saveState();
+    renderStudyTime();
+    showStatus("Heart rank reset for a new six-month cycle. Your total study time is unchanged.");
+  });
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) tickTimer();
+  });
+  window.addEventListener("beforeunload", function () {
+    if (timerInterval !== null) tickTimer();
+    saveState();
+  });
+
   document.title = DESK_APP.name;
   renderDate();
-  renderNotes();
+  renderStrokes();
   renderCards();
   renderTasks();
-  renderTimer();
-  renderImportPreview();
-  showScreen("desk");
+  renderCalendar();
+  renderStudyTime();
+  showScreen("home");
 })();

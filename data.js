@@ -6,7 +6,16 @@ const DESK_APP = {
 };
 
 const STARTER_TASKS = [
-  { title: "Review this week's class notes", dayOffset: 1 },
-  { title: "Finish a little reading", dayOffset: 3 },
-  { title: "Plan next week's study time", dayOffset: 6 }
+  { title: "Biology: cell model reflection", date: "2026-09-10" },
+  { title: "History: primary source response", date: "2026-09-24" },
+  { title: "Mathematics: unit practice set", date: "2026-10-06" },
+  { title: "English: first draft of personal essay", date: "2026-10-20" },
+  { title: "Biology: ecosystems lab notes", date: "2026-11-12" },
+  { title: "History: research question proposal", date: "2026-11-30" },
+  { title: "Mathematics: term review", date: "2026-12-10" },
+  { title: "English: reading journal check-in", date: "2027-01-14" },
+  { title: "Biology: genetics quiz review", date: "2027-02-04" },
+  { title: "History: source analysis", date: "2027-02-24" },
+  { title: "Mathematics: functions project", date: "2027-03-10" },
+  { title: "English: final portfolio reflection", date: "2027-04-15" }
 ];
